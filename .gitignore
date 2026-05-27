@@ -216,3 +216,25 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- icd-mapper project-specific ---
+# Raw + cached terminology files (downloaded from CDC / WHO) — big, not for git
+data/raw/
+data/.cache/
+data/*.json
+data/*.csv
+data/*.parquet
+# Keep .gitkeep so empty dirs survive
+!data/.gitkeep
+!data/raw/.gitkeep
+
+# Local outputs from pipeline runs
+outputs/
+
+# Notebook output (we use jupytext for source-of-truth .py mirrors)
+*.ipynb
+
+# OS junk
+.DS_Store
+Thumbs.db
+

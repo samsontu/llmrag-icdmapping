@@ -1,0 +1,100 @@
+[project]
+name = "icd-mapper"
+version = "0.0.1"
+description = "Map ICD-10-CM to ICD-11 Foundation using LLM, RAG, and agentic approaches."
+authors = [{ name = "Samson Tu", email = "samsontu@gmail.com" }]
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+
+dependencies = [
+    # LLMs
+    "anthropic>=0.40.0",
+    "openai>=1.50.0",
+    # HTTP + config
+    "httpx>=0.27.0",
+    "python-dotenv>=1.0.1",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.5.0",
+    # Data
+    "pandas>=2.2.0",
+    # Caching
+    "diskcache>=5.6.3",
+    # CLI / output
+    "typer>=0.12.0",
+    "rich>=13.7.0",
+]
+
+[project.optional-dependencies]
+# Filled in later weeks; declared here so we plan the dependency surface.
+rag = [
+    "chromadb>=0.5.0",
+    "qdrant-client>=1.11.0",
+    "rank-bm25>=0.2.2",
+    "sentence-transformers>=3.0.0",
+]
+agents = [
+    # Pick one in week 9 — both declared so we can try them.
+    "claude-agent-sdk>=0.1.0",
+    "langgraph>=0.2.30",
+]
+eval = [
+    "ragas>=0.2.0",
+    "scikit-learn>=1.5.0",
+    "gradio>=4.40.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.6.0",
+    "ipykernel>=6.29.0",
+    "jupytext>=1.16.0",
+    "respx>=0.21.0",  # httpx mocking
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/icd_mapper"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",  # pycodestyle + pyflakes
+    "I",            # isort
+    "B",            # bugbear
+    "UP",           # pyupgrade
+    "SIM",          # simplify
+    "PT",           # pytest
+    "RUF",          # ruff-specific
+]
+ignore = ["E501"]  # line length handled by formatter
+
+[tool.ruff.lint.per-file-ignores]
+# Typer's idiomatic CLI definition uses typer.Option(...) as default values.
+"scripts/**" = ["B008"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-ra --strict-markers"
+markers = [
+    "integration: hits the live WHO ICD-11 API; requires ICD11_CLIENT_ID/SECRET",
+]
+
+[tool.coverage.run]
+source = ["src/icd_mapper"]
+branch = true
