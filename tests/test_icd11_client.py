@@ -101,3 +101,94 @@ async def test_token_is_fetched_only_once(client: ICD11Client) -> None:
         assert token_route.call_count == 1
 
     await client._http.aclose()
+
+
+SAMPLE_LOOKUP = {
+    "@id": "http://id.who.int/icd/release/11/2026-01/mms/257068234",
+    "code": "1A00",
+    "title": {"@language": "en", "@value": "Cholera"},
+    "postcoordinationScale": [
+        {
+            "axisName": "http://id.who.int/icd/schema/infectiousAgent",
+            "requiredPostcoordination": "false",
+            "allowMultipleValues": "AllowAlways",
+            "scaleEntity": ["http://id.who.int/icd/release/11/2026-01/mms/1205958647"],
+        }
+    ],
+}
+
+
+async def test_mms_lookup_derives_code_and_axes(temp_cache_dir: Path) -> None:
+    c = ICD11Client(
+        client_id="fake-id",
+        client_secret="fake-secret",
+        release_id="2026-01",
+        cache_dir=str(temp_cache_dir),
+    )
+    with respx.mock(assert_all_called=False) as router:
+        router.post(TOKEN_URL).mock(
+            return_value=httpx.Response(200, json={"access_token": "tok", "expires_in": 3600})
+        )
+        route = router.get(
+            f"{BASE_URL}/release/11/2026-01/mms/lookup",
+            params={"foundationUri": "http://id.who.int/icd/entity/1205958647"},
+        ).mock(return_value=httpx.Response(200, json=SAMPLE_LOOKUP))
+
+        d = await c.mms_lookup("1205958647")
+        assert route.call_count == 1
+        assert d.foundation_uri == "http://id.who.int/icd/entity/1205958647"
+        assert d.code == "1A00"
+        assert d.title == "Cholera"
+        assert not d.is_residual
+        assert d.axes[0].axis_name.endswith("infectiousAgent")
+        assert not d.requires_postcoordination
+
+    await c.aclose()
+
+
+async def test_mms_lookup_flags_residual(temp_cache_dir: Path) -> None:
+    c = ICD11Client(
+        client_id="fake-id",
+        client_secret="fake-secret",
+        release_id="2026-01",
+        cache_dir=str(temp_cache_dir),
+    )
+    residual = {
+        "@id": "http://id.who.int/icd/release/11/2026-01/mms/1435254666/unspecified",
+        "code": "1H0Z",
+        "title": {"@language": "en", "@value": "Infection, unspecified"},
+    }
+    with respx.mock(assert_all_called=False) as router:
+        router.post(TOKEN_URL).mock(
+            return_value=httpx.Response(200, json={"access_token": "tok", "expires_in": 3600})
+        )
+        router.get(f"{BASE_URL}/release/11/2026-01/mms/lookup").mock(
+            return_value=httpx.Response(200, json=residual)
+        )
+        d = await c.mms_lookup("http://id.who.int/icd/entity/1435254666")
+        assert d.is_residual
+        assert d.code == "1H0Z"
+        assert d.axes == []
+
+    await c.aclose()
+
+
+async def test_codeinfo_encodes_cluster(temp_cache_dir: Path) -> None:
+    c = ICD11Client(
+        client_id="fake-id",
+        client_secret="fake-secret",
+        release_id="2026-01",
+        cache_dir=str(temp_cache_dir),
+    )
+    with respx.mock(assert_all_called=False) as router:
+        router.post(TOKEN_URL).mock(
+            return_value=httpx.Response(200, json={"access_token": "tok", "expires_in": 3600})
+        )
+        route = router.get(f"{BASE_URL}/release/11/2026-01/mms/codeinfo/1A00%26XN8P1").mock(
+            return_value=httpx.Response(200, json={"code": "1A00&XN8P1"})
+        )
+        info = await c.codeinfo("1A00&XN8P1")
+        assert info["code"] == "1A00&XN8P1"
+        assert route.call_count == 1
+
+    await c.aclose()

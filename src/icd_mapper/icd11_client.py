@@ -18,12 +18,13 @@ from __future__ import annotations
 import logging
 import time
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 from diskcache import Cache
 
 from icd_mapper.config import settings
-from icd_mapper.types import ICD11Entity
+from icd_mapper.types import ICD11Entity, MmsDerivation, PostcoordinationAxis
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ class ICD11Client:
         client_secret: str | None = None,
         language: str | None = None,
         api_version: str | None = None,
+        release_id: str | None = None,
         base_url: str | None = None,
         token_url: str | None = None,
         cache_dir: str | None = None,
@@ -65,6 +67,7 @@ class ICD11Client:
         self._client_secret = secret
         self.language = language or settings.icd11_language
         self.api_version = api_version or settings.icd11_api_version
+        self.release_id = release_id or settings.icd11_release_id
         self.base_url = (base_url or settings.icd11_base_url).rstrip("/")
         self.token_url = token_url or settings.icd11_token_url
 
@@ -204,7 +207,87 @@ class ICD11Client:
         return out
 
 
+    # ---- MMS linearization: derivation + postcoordination ----
+
+    def _mms_path(self, suffix: str) -> str:
+        return f"/release/11/{self.release_id}/mms{suffix}"
+
+    async def mms_lookup(self, foundation_id_or_uri: str) -> MmsDerivation:
+        """Derive the MMS entity a Foundation entity is coded to.
+
+        Uses `/release/11/{release}/mms/lookup?foundationUri=...`. The result is the
+        entity itself, an ancestor it aggregates into, or a residual category
+        (URI ending /unspecified or /other). Deterministic: never ask the LLM for this.
+        """
+        uri = _foundation_uri(foundation_id_or_uri)
+        raw = await self._get(self._mms_path(f"/lookup?foundationUri={quote(uri, safe='')}"))
+        return _derivation_from_raw(uri, raw)
+
+    async def get_mms_entity_raw(self, mms_uri: str) -> dict[str, Any]:
+        """Return the raw JSON for an MMS linearization entity, given its URI."""
+        return await self._get(_path_from_uri(mms_uri))
+
+    async def get_postcoordination_axes(self, mms_uri: str) -> list[PostcoordinationAxis]:
+        """Return the postcoordination axes (and allowed value roots) for an MMS stem."""
+        raw = await self.get_mms_entity_raw(mms_uri)
+        return _axes_from_raw(raw)
+
+    async def codeinfo(self, code_string: str) -> dict[str, Any]:
+        """Validate/explain a code or cluster string such as '1A00&XN8P1' or 'GB60.Z/GB61.4'.
+
+        Raises httpx.HTTPStatusError for strings the API does not accept. See also the
+        richer `describe` endpoint (ICD-API 2.5 release notes) if you need nested detail.
+        """
+        return await self._get(self._mms_path(f"/codeinfo/{quote(code_string, safe='')}"))
+
+
 # ---- helpers ----
+
+
+FOUNDATION_PREFIX = "http://id.who.int/icd/entity/"
+RESIDUAL_SUFFIXES = ("/unspecified", "/other")
+
+
+def _foundation_uri(id_or_uri: str) -> str:
+    """Accept '257068234' or a full Foundation URI; return the http:// URI form."""
+    if id_or_uri.startswith("http"):
+        return id_or_uri.replace("https://", "http://", 1)
+    return f"{FOUNDATION_PREFIX}{id_or_uri}"
+
+
+def _path_from_uri(uri: str) -> str:
+    """'http://id.who.int/icd/release/11/...' -> '/release/11/...' (relative to base_url)."""
+    for prefix in ("http://id.who.int/icd", "https://id.who.int/icd"):
+        if uri.startswith(prefix):
+            return uri[len(prefix) :]
+    raise ValueError(f"Not an ICD URI: {uri!r}")
+
+
+def _axes_from_raw(raw: dict[str, Any]) -> list[PostcoordinationAxis]:
+    axes = []
+    for scale in raw.get("postcoordinationScale", []) or []:
+        required = scale.get("requiredPostcoordination", False)
+        axes.append(
+            PostcoordinationAxis(
+                axis_name=scale.get("axisName", ""),
+                required=str(required).lower() == "true",
+                allow_multiple=str(scale.get("allowMultipleValues", "NotAllowed")),
+                scale_entities=list(scale.get("scaleEntity", []) or []),
+            )
+        )
+    return axes
+
+
+def _derivation_from_raw(foundation_uri: str, raw: dict[str, Any]) -> MmsDerivation:
+    mms_uri = raw["@id"]
+    return MmsDerivation(
+        foundation_uri=foundation_uri,
+        mms_uri=mms_uri,
+        code=raw.get("code") or None,
+        title=_localized(raw.get("title")),
+        is_residual=mms_uri.rstrip("/").endswith(RESIDUAL_SUFFIXES),
+        axes=_axes_from_raw(raw),
+    )
 
 
 def _entity_from_raw(raw: dict[str, Any]) -> ICD11Entity:

@@ -1,0 +1,1 @@
+Learning project. Scaffold plumbing freely; do not write retrieval, scoring or prompt logic unless asked.

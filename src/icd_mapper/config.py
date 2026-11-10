@@ -34,13 +34,20 @@ class Settings(BaseSettings):
     icd11_client_secret: SecretStr | None = None
     icd11_api_version: str = "v2"
     icd11_language: str = "en"
-    icd11_release_id: str = "2024-01"
+    icd11_release_id: str = "2026-01"  # matches the 2026 WHO mapping tables
     icd11_token_url: str = "https://icdaccessmanagement.who.int/connect/token"
     icd11_base_url: str = "https://id.who.int/icd"
+
+    # --- WHO CodeFusion (desktop binary; proposes postcoordination clusters) ---
+    codefusion_path: Path | None = None  # e.g. .../codefusion_osx-x64/CodeFusion
+    codefusion_version: str = "2026"
+    codefusion_free_postcoordination: bool = False  # useFreePostcoordinationMatching
 
     # --- Paths ---
     icd_data_dir: Path = REPO_ROOT / "data"
     icd_cache_dir: Path = REPO_ROOT / "data" / ".cache"
+    # WHO 2026 release mapping table (ICD-10 -> ICD-11), the gold/silver source.
+    who_mapping_table: Path = REPO_ROOT / "data" / "raw" / "10To11MapToOneCategory.xlsx"
 
     # --- Budget ---
     daily_llm_budget_usd: float = 5.00

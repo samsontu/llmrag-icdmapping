@@ -1,7 +1,7 @@
 [project]
 name = "icd-mapper"
 version = "0.0.1"
-description = "Map ICD-10-CM to ICD-11 Foundation using LLM, RAG, and agentic approaches."
+description = "Map ICD-10-CM to ICD-11: Foundation entity first, then derived MMS code and postcoordinated cluster, using LLMs, RAG and agents."
 authors = [{ name = "Samson Tu", email = "samsontu@gmail.com" }]
 readme = "README.md"
 license = { text = "MIT" }
@@ -18,6 +18,7 @@ dependencies = [
     "pydantic-settings>=2.5.0",
     # Data
     "pandas>=2.2.0",
+    "openpyxl>=3.1.0",  # WHO mapping tables (.xlsx)
     # Caching
     "diskcache>=5.6.3",
     # CLI / output
@@ -28,13 +29,22 @@ dependencies = [
 [project.optional-dependencies]
 # Filled in later weeks; declared here so we plan the dependency surface.
 rag = [
-    "chromadb>=0.5.0",
-    "qdrant-client>=1.11.0",
-    "rank-bm25>=0.2.2",
+    # DuckDB holds vectors (vss/HNSW) and BM25 (fts) in one store.
+    "duckdb>=1.1.0",
+    "pyarrow>=17.0.0",
     "sentence-transformers>=3.0.0",
 ]
+mapping = [
+    # SSSOM export + validation (Lesson 9).
+    "sssom>=0.4.0",
+]
+mcp = [
+    # MCP server for Claude Desktop / Claude Code (Lesson 11).
+    "mcp>=1.2.0",
+]
 agents = [
-    # Pick one in week 9 — both declared so we can try them.
+    # Lesson 10 builds the tool loop by hand on the Messages API first;
+    # these are optional comparisons afterwards.
     "claude-agent-sdk>=0.1.0",
     "langgraph>=0.2.30",
 ]
